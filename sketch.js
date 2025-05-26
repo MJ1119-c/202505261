@@ -1,85 +1,56 @@
 let video;
-let faceMesh;
-let faces = [];
-let triangles;
-let uvCoords;
-let imgOpen, imgClose; // 兩張貼圖
+let facemesh;
+let predictions = [];
+let imgOpen, imgClose;
 
 function preload() {
-  // Initialize FaceMesh model with a maximum of one face
-  faceMesh = ml5.faceMesh({ maxFaces: 1 });
-
-  // Load the texture images for open and closed mouth states
-  imgOpen = loadImage("00.png");   // 嘴巴張開
-  imgClose = loadImage("01.png");  // 嘴巴閉合
-}
-
-function mousePressed() {
-  // Log detected face data to the console
-  console.log(faces);
-}
-
-function gotFaces(results) {
-  faces = results;
-  // 只在第一次偵測到臉時取得 triangles 和 uvCoords
-  if (faces.length > 0 && !triangles && !uvCoords) {
-    triangles = faceMesh.getTriangles();
-    uvCoords = faceMesh.getUVCoords();
-  }
+  imgOpen = loadImage('00.png');
+  imgClose = loadImage('01.png');
 }
 
 function setup() {
-  createCanvas(640, 480, WEBGL);
+  createCanvas(640, 480).position(
+    (windowWidth - 640) / 2,
+    (windowHeight - 480) / 2
+  );
   video = createCapture(VIDEO);
+  video.size(width, height);
   video.hide();
 
-  // Start detecting faces
-  faceMesh.detectStart(video, gotFaces);
+  facemesh = ml5.facemesh(video, modelReady);
+  facemesh.on('predict', results => {
+    predictions = results;
+  });
+}
 
-  // Retrieve face mesh triangles and UV coordinates
-  triangles = faceMesh.getTriangles();
-  uvCoords = faceMesh.getUVCoords();
+function modelReady() {
+  // 模型載入完成
 }
 
 function draw() {
-  // Center the 3D space to align with the canvas
-  translate(-width / 2, -height / 2);
-  background(0);
+  image(video, 0, 0, width, height);
 
-  // Display the video feed
-  image(video, 0, 0);
+  if (predictions.length > 0) {
+    const keypoints = predictions[0].scaledMesh;
 
-  if (
-    faces.length > 0 &&
-    triangles && uvCoords &&
-    faces[0].keypoints.length > 14
-  ) {
-    let face = faces[0];
-    let upperLip = face.keypoints[13];
-    let lowerLip = face.keypoints[14];
-    let mouthOpen = dist(upperLip.x, upperLip.y, lowerLip.x, lowerLip.y) > 20;
-    let img = mouthOpen ? imgOpen : imgClose;
+    // 嘴巴開合判斷（第13和14點）
+    const [x1, y1] = keypoints[13];
+    const [x2, y2] = keypoints[14];
+    let mouthOpen = dist(x1, y1, x2, y2) > 20; // 20可依實際情況調整
 
-    texture(img);
-    textureMode(NORMAL);
-    noStroke();
-    beginShape(TRIANGLES);
+    // 以鼻子（168點）為中心，眼距決定面罩大小
+    const [cx, cy] = keypoints[168];
+    const [lx, ly] = keypoints[33];  // 左眼角
+    const [rx, ry] = keypoints[263]; // 右眼角
+    let maskW = dist(lx, ly, rx, ry) * 2; // 面罩寬
+    let maskH = maskW * (imgOpen.height / imgOpen.width); // 面罩高，依圖片比例
 
-    for (let i = 0; i < triangles.length; i++) {
-      let tri = triangles[i];
-      let [a, b, c] = tri;
-      let pointA = face.keypoints[a];
-      let pointB = face.keypoints[b];
-      let pointC = face.keypoints[c];
-      let uvA = uvCoords[a];
-      let uvB = uvCoords[b];
-      let uvC = uvCoords[c];
-      vertex(pointA.x, pointA.y, uvA[0], uvA[1]);
-      vertex(pointB.x, pointB.y, uvB[0], uvB[1]);
-      vertex(pointC.x, pointC.y, uvC[0], uvC[1]);
-    }
+    // 選擇圖片
+    let maskImg = mouthOpen ? imgOpen : imgClose;
 
-    endShape();
+    // 畫面罩（中心對齊鼻子）
+    imageMode(CENTER);
+    image(maskImg, cx, cy, maskW, maskH);
+    imageMode(CORNER);
   }
 }
-
