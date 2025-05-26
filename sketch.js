@@ -21,6 +21,11 @@ function mousePressed() {
 
 function gotFaces(results) {
   faces = results;
+  // 只在第一次偵測到臉時取得 triangles 和 uvCoords
+  if (faces.length > 0 && !triangles && !uvCoords) {
+    triangles = faceMesh.getTriangles();
+    uvCoords = faceMesh.getUVCoords();
+  }
 }
 
 function setup() {
@@ -44,41 +49,31 @@ function draw() {
   // Display the video feed
   image(video, 0, 0);
 
-  if (faces.length > 0) {
+  if (
+    faces.length > 0 &&
+    triangles && uvCoords &&
+    faces[0].keypoints.length > 14
+  ) {
     let face = faces[0];
-
-    // 嘴巴開合判斷
     let upperLip = face.keypoints[13];
     let lowerLip = face.keypoints[14];
-    let mouthOpen = dist(upperLip.x, upperLip.y, lowerLip.x, lowerLip.y) > 20; // 20 可依實際情況調整
-
-    // 根據嘴巴狀態選擇貼圖
+    let mouthOpen = dist(upperLip.x, upperLip.y, lowerLip.x, lowerLip.y) > 20;
     let img = mouthOpen ? imgOpen : imgClose;
 
-    // Apply texture mapping to the detected face mesh
     texture(img);
     textureMode(NORMAL);
     noStroke();
     beginShape(TRIANGLES);
 
-    // Loop through each triangle in the face mesh
     for (let i = 0; i < triangles.length; i++) {
       let tri = triangles[i];
-
-      // Get the indices of the three points that form a triangle
       let [a, b, c] = tri;
-
-      // Retrieve the corresponding 2D face keypoints
       let pointA = face.keypoints[a];
       let pointB = face.keypoints[b];
       let pointC = face.keypoints[c];
-
-      // Retrieve the corresponding UV coordinates for texture mapping
       let uvA = uvCoords[a];
       let uvB = uvCoords[b];
       let uvC = uvCoords[c];
-
-      // Define the triangle with both position (x, y) and UV texture coordinates
       vertex(pointA.x, pointA.y, uvA[0], uvA[1]);
       vertex(pointB.x, pointB.y, uvB[0], uvB[1]);
       vertex(pointC.x, pointC.y, uvC[0], uvC[1]);
